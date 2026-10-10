@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <title>FloodGuard AI — Smart Urban Flood Early Warning Platform</title>
+
+  <!-- External Libraries & Fonts -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Floating Toast Notifications -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Location Setup Modal -->
+  <div id="location-setup-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-icon-3d"><i class="fa-solid fa-location-crosshairs"></i></div>
+        <div>
+          <h3 data-i18n="locModalTitle">📍 Turn On Device Location</h3>
+          <p data-i18n="locModalSub">Enable location access so FloodGuard AI can analyze live flood conditions in your exact area.</p>
+        </div>
+      </div>
+      
+      <div class="modal-body">
+        <div class="detected-box">
+          <span class="label" data-i18n="locModalDefaultLabel">Default Pre-Set Area:</span>
+          <strong id="modal-detected-location" class="place-name-en">Vijayawada, Andhra Pradesh, India</strong>
+          <small data-i18n="locModalGpsNote">Coordinates: 16.5186° N, 80.6195° E</small>
+        </div>
+
+        <div class="loc-gate-actions">
+          <button class="btn btn-primary full-width" id="btn-turn-on-gps">
+            <i class="fa-solid fa-crosshairs"></i> <span data-i18n="locModalTurnOnBtn">Turn On Location &amp; Open Dashboard</span>
+          </button>
+          <button class="btn btn-glass full-width" id="btn-use-default-loc">
+            <span data-i18n="locModalUseDefaultBtn">Continue with Default Area (Vijayawada)</span>
+          </button>
+        </div>
+
+        <div class="form-item">
+          <label data-i18n="locModalOrSearch">Or search a different city/village in English:</label>
+          <div class="modal-input-wrap">
+            <input type="text" id="modal-custom-location" class="glass-input" placeholder="e.g. Guntur, Mangalagiri, Tenali, Mumbai..." autocomplete="off">
+            <div id="modal-suggestions" class="suggestions-box"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="brand-area">
+      <div class="brand-icon-3d">
+        <i class="fa-solid fa-water-ladder"></i>
+      </div>
+      <div class="brand-titles">
+        <div class="brand-main">
+          <span>FloodGuard</span><span class="brand-highlight">AI</span>
+          <span class="live-tag"><span class="live-dot"></span> <span data-i18n="liveDataBadge">LIVE TELEMETRY</span></span>
+        </div>
+        <p class="brand-caption" data-i18n="brandSubtitle">🌊 Early Warning Flood Alert &amp; Safety Dashboard</p>
+      </div>
+    </div>
+
+    <!-- Header Actions & Language Selector -->
+    <div class="header-status">
+      <div class="lang-selector-wrap">
+        <i class="fa-solid fa-language lang-icon"></i>
+        <select id="lang-selector" class="lang-dropdown">
+          <option value="en" selected>🌐 English</option>
+          <option value="te">🇮🇳 తెలుగు (Telugu)</option>
+          <option value="hi">🇮🇳 हिन्दी (Hindi)</option>
+          <option value="ta">🇮🇳 தமிழ் (Tamil)</option>
+        </select>
+      </div>
+
+      <button class="btn btn-notify btn-sm" id="btn-enable-notifications">
+        <i class="fa-solid fa-bell"></i> <span data-i18n="alertsBtn">Alerts</span>
+      </button>
+
+      <div class="clock-display" id="system-clock">--:--:-- UTC</div>
+
+      <button class="btn btn-alert" id="btn-broadcast-alert">
+        <i class="fa-solid fa-triangle-exclamation"></i> <span data-i18n="dangerAlertBtn">Danger Alert</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Advisory Ribbon -->
+  <div class="advisory-strip" id="top-advisory-strip">
+    <div class="advisory-left">
+      <span class="threat-flag" id="threat-flag">📢 CITY RAIN WATCH</span>
+      <p id="threat-message" data-i18n="advisoryMsgDefault">Checking live weather and ground level. No danger detected right now.</p>
+    </div>
+    <div class="advisory-right">
+      <span><span data-i18n="updatedLabel">Updated:</span> <strong id="last-update-time">Just now</strong></span>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <nav class="view-tabs">
+    <button class="tab-btn active" data-tab="tab-dashboard">
+      🏠 <span data-i18n="tabDashboard">Live City Dashboard</span>
+    </button>
+    <button class="tab-btn" data-tab="tab-simulator">
+      🧪 <span data-i18n="tabSimulator">Rain &amp; Drain Test Lab</span>
+    </button>
+    <button class="tab-btn" data-tab="tab-reports">
+      📣 <span data-i18n="tabReports">Citizen Water Complaints</span>
+      <span class="badge-count" id="reports-counter">0</span>
+    </button>
+    <button class="tab-btn" data-tab="tab-hotspots">
+      ⚠️ <span data-i18n="tabHotspots">Danger Spots &amp; Shelters</span>
+    </button>
+  </nav>
+
+  <!-- Main Layout -->
+  <main class="main-body">
+
+    <!-- ================= TAB 1: LIVE DASHBOARD ================= -->
+    <section class="tab-pane active" id="tab-dashboard">
+      
+      <!-- Search Bar -->
+      <div class="search-strip">
+        <div class="search-wrapper">
+          <div class="search-input-group">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" id="basin-search-input" data-i18n-ph="searchPlaceholder" placeholder="Search city, town, or village in English (e.g. Vijayawada, Guntur, Velachery)..." autocomplete="off">
+            
+            <button class="btn btn-mic-3d" id="btn-voice-search" title="Click to speak place name in English">
+              <i class="fa-solid fa-microphone"></i>
+            </button>
+
+            <button class="btn btn-primary" id="btn-search-basin">
+              <span data-i18n="checkRiskBtn">Check Risk</span>
+            </button>
+          </div>
+          <div class="suggestions-box" id="search-suggestions-box"></div>
+        </div>
+
+        <div class="preset-group">
+          <span class="preset-label">⚡ <span data-i18n="quickSelectLabel">Quick Select:</span></span>
+          <button class="chip-btn active" data-lat="16.5186" data-lon="80.6195" data-name="Vijayawada">Vijayawada</button>
+          <button class="chip-btn" data-lat="16.3067" data-lon="80.4365" data-name="Guntur">Guntur</button>
+          <button class="chip-btn" data-lat="16.4300" data-lon="80.5500" data-name="Mangalagiri">Mangalagiri</button>
+          <button class="chip-btn" data-lat="16.2430" data-lon="80.6400" data-name="Tenali">Tenali</button>
+          <button class="chip-btn" data-lat="19.0144" data-lon="72.8428" data-name="Mumbai">Mumbai</button>
+          <button class="chip-btn" data-lat="12.9791" data-lon="80.2185" data-name="Chennai">Chennai</button>
+          <button class="chip-btn" data-lat="12.9352" data-lon="77.6772" data-name="Bengaluru">Bengaluru</button>
+        </div>
+      </div>
+
+      <!-- 4 Thick Navy Metric Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card card-3d glass-card">
+          <div class="kpi-card-header">
+            <span class="kpi-label">📍 <span data-i18n="kpiSelectedArea">Selected Area</span></span>
+            <div class="card-icon-3d blue"><i class="fa-solid fa-location-dot"></i></div>
+          </div>
+          <h2 class="kpi-main-val place-name-en" id="kpi-loc-name">Vijayawada (Krishna River)</h2>
+          <div class="kpi-sub" id="kpi-loc-coords">16.5186° N, 80.6195° E</div>
+          <div class="kpi-status-foot green"><i class="fa-solid fa-circle-check"></i> <span data-i18n="satelliteConnected">Live Satellite Connected</span></div>
+        </div>
+
+        <div class="kpi-card card-3d glass-card highlight-glow" id="card-threat-container">
+          <div class="kpi-card-header">
+            <span class="kpi-label">🛡️ <span data-i18n="kpiFloodScore">Flood Danger Score</span></span>
+            <div class="card-icon-3d red"><i class="fa-solid fa-shield-halved"></i></div>
+          </div>
+          <div class="kpi-number-row">
+            <span class="kpi-huge-number" id="kpi-risk-score">--</span>
+            <span class="kpi-unit">/ 100</span>
+          </div>
+          <div class="kpi-sub">
+            <span data-i18n="conditionLabel">Condition:</span> <span class="risk-pill risk-MODERATE" id="kpi-risk-category">CALCULATING</span>
+          </div>
+          <div class="kpi-status-foot" data-i18n="predictionEngineFoot">Real-time prediction using live rain &amp; terrain</div>
+        </div>
+
+        <div class="kpi-card card-3d glass-card">
+          <div class="kpi-card-header">
+            <span class="kpi-label">🌧️ <span data-i18n="kpiLiveRain">Live Rain (Past 1h)</span></span>
+            <div class="card-icon-3d cyan"><i class="fa-solid fa-cloud-showers-water"></i></div>
+          </div>
+          <div class="kpi-number-row">
+            <span class="kpi-huge-number" id="kpi-rain-1h">0.0</span>
+            <span class="kpi-unit">mm</span>
+          </div>
+          <div class="kpi-sub">
+            <span data-i18n="next24hRain">Next 24 Hours Expected:</span> <strong id="kpi-rain-24h">0.0 mm</strong>
+          </div>
+          <div class="kpi-status-foot">Open-Meteo Satellite Feed</div>
+        </div>
+
+        <div class="kpi-card card-3d glass-card">
+          <div class="kpi-card-header">
+            <span class="kpi-label">⛰️ <span data-i18n="kpiAltitude">Ground Height (Altitude)</span></span>
+            <div class="card-icon-3d amber"><i class="fa-solid fa-mountain"></i></div>
+          </div>
+          <div class="kpi-number-row">
+            <span class="kpi-huge-number" id="kpi-elevation">--</span>
+            <span class="kpi-unit" data-i18n="metersUnit">meters high</span>
+          </div>
+          <div class="kpi-sub">
+            <span data-i18n="landShape">Land Shape:</span> <strong id="kpi-sump-risk" data-i18n="lowGroundNote">Low Ground (Water Collects)</strong>
+          </div>
+          <div class="kpi-status-foot">Digital Elevation Model (DEM)</div>
+        </div>
+      </div>
+
+      <!-- Split Layout -->
+      <div class="dashboard-split">
+        
+        <!-- Left: Map & Graphs -->
+        <div class="split-col-main">
+          
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">
+                <i class="fa-solid fa-map"></i>
+                <h3>🗺️ <span data-i18n="mapHeading">Live City Flood Map</span></h3>
+              </div>
+              <div class="panel-tools">
+                <button class="btn btn-sm btn-glass map-style-btn" id="btn-toggle-map-style">
+                  🛰️ <span data-i18n="mapStyleTopo">Topographic View</span>
+                </button>
+                <label class="check-label"><input type="checkbox" id="layer-heatmap" checked> 🔥 <span data-i18n="heatMapLayer">Flood Heat Map</span></label>
+                <label class="check-label"><input type="checkbox" id="layer-shelters" checked> 🏥 <span data-i18n="sheltersLayer">Shelters</span></label>
+                <label class="check-label"><input type="checkbox" id="layer-reports" checked> ⚠️ <span data-i18n="complaintsLayer">Complaints</span></label>
+                <button class="btn btn-sm btn-glass" id="btn-recenter-map">
+                  <i class="fa-solid fa-crosshairs"></i> <span data-i18n="recenterBtn">Reset View</span>
+                </button>
+              </div>
+            </div>
+            <div class="map-box">
+              <div id="gis-map" class="map-view"></div>
+              <div class="map-legend">
+                <span><i class="dot green"></i> <span data-i18n="legendSafe">Low Risk (&lt;30)</span></span>
+                <span><i class="dot yellow"></i> <span data-i18n="legendMedium">Moderate (30-55)</span></span>
+                <span><i class="dot orange"></i> <span data-i18n="legendWarning">High Risk (55-75)</span></span>
+                <span><i class="dot red"></i> <span data-i18n="legendDanger">Critical (&gt;75)</span></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Multi-Graph Panel -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">
+                <i class="fa-solid fa-chart-line"></i>
+                <h3 id="current-graph-heading">📊 <span data-i18n="graphHeading24h">24-Hour Hourly Rain Forecast</span></h3>
+              </div>
+              
+              <div class="graph-selector-bar">
+                <button class="graph-tab-btn active" data-graph="24h">
+                  🌧️ <span data-i18n="btnGraph24h">24h Rain</span>
+                </button>
+                <button class="graph-tab-btn" data-graph="waterlevel">
+                  🌊 <span data-i18n="btnGraphWater">Water Level</span>
+                </button>
+                <button class="graph-tab-btn" data-graph="damagepie">
+                  🥧 <span data-i18n="btnGraphPie">Risk Factors Pie</span>
+                </button>
+                <button class="graph-tab-btn" data-graph="history">
+                  📈 <span data-i18n="btnGraphHistory">7-Day Trend</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="multi-chart-display">
+              <div class="chart-canvas-wrapper" id="wrap-chart-main">
+                <canvas id="chart-primary"></canvas>
+              </div>
+              <div class="pie-info-box" id="pie-info-box" style="display:none;">
+                <h4>🥧 <span data-i18n="pieHeading">Estimated Risk Impact Share</span></h4>
+                <p data-i18n="pieDescription">Decomposition of what factors are driving flood risks and potential damage in this specific area.</p>
+                <div class="pie-metrics-list" id="pie-metrics-list"></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right: Causes & Actions -->
+        <div class="split-col-side">
+          
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">
+                <i class="fa-solid fa-list-check"></i>
+                <h3>🔍 <span data-i18n="causesHeading">Why is this area at risk? (Live Causes)</span></h3>
+              </div>
+              <span class="confidence-tag">95% <span data-i18n="accuracyLabel">Accuracy</span></span>
+            </div>
+            
+            <div class="diagnostics-box">
+              <div class="diag-entry">
+                <span class="diag-label">🌧️ <span data-i18n="causeRain">Heavy Rain Stress</span></span>
+                <strong class="diag-val" id="diag-rain-val">-- / 100</strong>
+                <div class="progress-track"><div class="progress-bar bar-blue" id="meter-rain" style="width: 25%;"></div></div>
+              </div>
+
+              <div class="diag-entry">
+                <span class="diag-label">⛰️ <span data-i18n="causeElevation">Low Land Depth (Water flows in)</span></span>
+                <strong class="diag-val" id="diag-elev-val">-- / 100</strong>
+                <div class="progress-track"><div class="progress-bar bar-yellow" id="meter-elev" style="width: 60%;"></div></div>
+              </div>
+
+              <div class="diag-entry">
+                <span class="diag-label">🚰 <span data-i18n="causeDrain">Drain Pipe Blockage</span></span>
+                <strong class="diag-val" id="diag-drain-val">38% Blocked</strong>
+                <div class="progress-track"><div class="progress-bar bar-orange" id="meter-drain" style="width: 38%;"></div></div>
+              </div>
+
+              <div class="diag-entry">
+                <span class="diag-label">🌱 <span data-i18n="causeSoil">Soil Wetness (Cannot soak more)</span></span>
+                <strong class="diag-val" id="diag-soil-val">72% Full</strong>
+                <div class="progress-track"><div class="progress-bar bar-red" id="meter-soil" style="width: 72%;"></div></div>
+              </div>
+            </div>
+
+            <div class="section-divider-title">
+              <i class="fa-solid fa-hand-holding-hand"></i>
+              <h4>💡 <span data-i18n="whatToDoHeading">What should you &amp; the city do?</span></h4>
+            </div>
+            <ul class="mitigation-list" id="mitigation-actions-list">
+              <li>Checking live city status to give safety advice...</li>
+            </ul>
+
+            <div class="panel-foot-action">
+              <button class="btn btn-primary full-width" id="btn-dispatch-crews">
+                <i class="fa-solid fa-truck"></i> <span data-i18n="dispatchTruckBtn">Send Drain Cleaning Truck to this Area</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">
+                <i class="fa-solid fa-hospital"></i>
+                <h3>🏥 <span data-i18n="sheltersHeading">Nearby Safe Shelters &amp; Hospitals</span></h3>
+              </div>
+              <span class="sub-badge" id="shelter-count">3 Open</span>
+            </div>
+            <div class="shelters-stack" id="shelters-container"></div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ================= TAB 2: TEST LAB ================= -->
+    <section class="tab-pane" id="tab-simulator">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i class="fa-solid fa-sliders"></i>
+            <h3>🧪 <span data-i18n="simHeading">Test What Happens If Heavy Rain Falls (Test Lab)</span></h3>
+          </div>
+          <span class="threat-flag" style="background:#0284c7;">Experiment Mode</span>
+        </div>
+        
+        <p class="panel-lead-text" data-i18n="simLead">
+          Drag the sliders below to see what happens to this area during sudden cloudbursts, longer storms, or when garbage chokes the city drains.
+        </p>
+
+        <div class="simulator-grid">
+          
+          <div class="sim-controls-pane">
+            <div class="slider-card">
+              <div class="slider-head">
+                <span>🌧️ <span data-i18n="simRainLabel">Rain Speed &amp; Amount</span></span>
+                <strong id="sim-disp-rain">75 mm/hr</strong>
+              </div>
+              <input type="range" min="10" max="200" value="75" class="range-slider" id="sim-input-rain">
+              <div class="slider-ticks"><span>Light (10)</span><span>Heavy (75)</span><span>Cloudburst (200)</span></div>
+            </div>
+
+            <div class="slider-card">
+              <div class="slider-head">
+                <span>⏳ <span data-i18n="simDurLabel">How Long Rain Falls (Hours)</span></span>
+                <strong id="sim-disp-dur">3.5 Hours</strong>
+              </div>
+              <input type="range" min="0.5" max="12" step="0.5" value="3.5" class="range-slider" id="sim-input-dur">
+              <div class="slider-ticks"><span>30 mins</span><span>3.5 hrs</span><span>12 hrs</span></div>
+            </div>
+
+            <div class="slider-card">
+              <div class="slider-head">
+                <span>🗑️ <span data-i18n="simDrainLabel">Garbage / Mud in Drain Pipes</span></span>
+                <strong id="sim-disp-block">45% Blocked</strong>
+              </div>
+              <input type="range" min="0" max="95" value="45" class="range-slider" id="sim-input-block">
+              <div class="slider-ticks"><span>Clean (0%)</span><span>Half Choked (50%)</span><span>Blocked (95%)</span></div>
+            </div>
+
+            <div class="slider-card">
+              <div class="slider-head">
+                <span>🌱 <span data-i18n="simSoilLabel">Ground Wetness</span></span>
+                <strong id="sim-disp-soil">80% Full of Water</strong>
+              </div>
+              <input type="range" min="10" max="100" value="80" class="range-slider" id="sim-input-soil">
+              <div class="slider-ticks"><span>Dry (10%)</span><span>Moist (50%)</span><span>Saturated (100%)</span></div>
+            </div>
+
+            <div class="sim-actions-row">
+              <button class="btn btn-primary" id="btn-run-sim">
+                <i class="fa-solid fa-play"></i> <span data-i18n="simRunBtn">Calculate Flooding Chance</span>
+              </button>
+              <button class="btn btn-glass" id="btn-reset-sim" data-i18n="simResetBtn">Reset to Normal</button>
+            </div>
+          </div>
+
+          <div class="sim-results-pane">
+            <div class="sim-kpi-row">
+              <div class="score-box">
+                <span class="score-label" data-i18n="simBaseLabel">Normal Risk</span>
+                <h2 id="sim-val-base">26.4</h2>
+                <span class="risk-pill risk-LOW">SAFE</span>
+              </div>
+              <div class="score-box stress">
+                <span class="score-label" data-i18n="simStormLabel">Risk During This Storm</span>
+                <h2 id="sim-val-sim">82.1</h2>
+                <span class="risk-pill risk-CRITICAL" id="sim-tag-result">DANGER</span>
+              </div>
+            </div>
+
+            <div class="delta-callout">
+              <div class="delta-left">
+                <span data-i18n="simDeltaLabel">Risk Increased By:</span>
+                <h1 id="sim-val-delta">+55.7 Points</h1>
+              </div>
+              <div class="delta-right">
+                <p id="sim-narrative-text">Water will quickly collect on the road because drains are too slow. More than 2 feet of water expected in low roads.</p>
+              </div>
+            </div>
+
+            <div class="section-divider-title">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              <h4>🚨 <span data-i18n="simActionTitle">Action Required Right Now:</span></h4>
+            </div>
+            <ul class="mitigation-list" id="sim-mitigation-list">
+              <li>Place emergency mobile water suction pumps near low underpasses.</li>
+              <li>Close roads leading to waterlogged subway tunnels.</li>
+            </ul>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ================= TAB 3: CITIZEN REPORTS ================= -->
+    <section class="tab-pane" id="tab-reports">
+      <div class="reports-layout">
+        
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <i class="fa-solid fa-camera"></i>
+              <h3>📢 <span data-i18n="repFormHeading">Report Flooding on Your Street</span></h3>
+            </div>
+            <span class="sub-badge" data-i18n="citizenHelpBadge">Citizen Help</span>
+          </div>
+
+          <form id="form-report" class="standard-form">
+            <div class="form-item">
+              <label>📍 <span data-i18n="repLocLabel">Street or Landmark Name</span></label>
+              <input type="text" id="rep-location" placeholder="e.g. Near Railway Underpass / Market Road" required>
+            </div>
+
+            <div class="form-row">
+              <div class="form-item">
+                <label>🌐 <span data-i18n="repLatLabel">Latitude</span></label>
+                <input type="number" step="0.0001" id="rep-lat" value="16.5190" required>
+              </div>
+              <div class="form-item">
+                <label>🌐 <span data-i18n="repLonLabel">Longitude</span></label>
+                <input type="number" step="0.0001" id="rep-lon" value="80.6180" required>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-item">
+                <label>⚠️ <span data-i18n="repTypeLabel">Problem Type</span></label>
+                <select id="rep-type">
+                  <option value="Water Standing on Road">Water Standing on Road</option>
+                  <option value="Completely Blocked Drain">Completely Blocked Drain</option>
+                  <option value="Canal Bank Overflow">Canal or Lake Overflowing</option>
+                  <option value="Open / Missing Manhole Lid">Open / Missing Manhole Lid</option>
+                </select>
+              </div>
+              <div class="form-item">
+                <label>📏 <span data-i18n="repSeverityLabel">How Deep is the Water?</span></label>
+                <select id="rep-severity">
+                  <option value="MODERATE">Ankle Deep (Bikes can pass)</option>
+                  <option value="HIGH">Knee Deep (Cars will stop)</option>
+                  <option value="CRITICAL">Very Deep (Water entering houses)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-item">
+              <label>📝 <span data-i18n="repDescLabel">More Details</span></label>
+              <textarea id="rep-desc" rows="3" placeholder="Tell us if cars are stuck, if plastic is blocking the water, etc..." required></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary full-width">
+              <i class="fa-solid fa-paper-plane"></i> <span data-i18n="repSubmitBtn">Submit Problem to Emergency Team</span>
+            </button>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <i class="fa-solid fa-list-check"></i>
+              <h3>📋 <span data-i18n="repStreamHeading">Reports Submitted by Citizens</span></h3>
+            </div>
+            <button class="btn btn-sm btn-glass" id="btn-purge-reports" data-i18n="clearAllBtn">Clear All</button>
+          </div>
+          <div class="reports-stream" id="reports-feed-container"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ================= TAB 4: DRAINAGE HOTSPOTS ================= -->
+    <section class="tab-pane" id="tab-hotspots">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <h3>⚠️ <span data-i18n="hotspotsHeading">High-Risk City Areas List</span></h3>
+          </div>
+          <span class="sub-badge" data-i18n="officialListBadge">Official Priority List</span>
+        </div>
+        
+        <p class="panel-lead-text" data-i18n="hotspotsLead">
+          These areas in the city are historically known to flood first whenever heavy downpours happen.
+        </p>
+
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>📍 <span data-i18n="thArea">Area Name</span></th>
+                <th>🏛️ <span data-i18n="thCity">City / State</span></th>
+                <th>⛰️ <span data-i18n="thHeight">Ground Height</span></th>
+                <th>🛣️ <span data-i18n="thPaved">Paved Road %</span></th>
+                <th>⚠️ <span data-i18n="thReason">Main Reason for Flooding</span></th>
+                <th>🛡️ <span data-i18n="thDanger">Danger Level</span></th>
+                <th>🚜 <span data-i18n="thAction">Municipal Action</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong class="place-name-en">One Town Canal Lane</strong></td>
+                <td><span class="place-name-en">Vijayawada, AP</span></td>
+                <td>18.0 m</td>
+                <td>88% Concrete</td>
+                <td>Water pushes backwards from canal</td>
+                <td><span class="risk-pill risk-CRITICAL">DANGER</span></td>
+                <td>Close backflow locks &amp; start suction pumps</td>
+              </tr>
+              <tr>
+                <td><strong class="place-name-en">Hindmata Flyover Area</strong></td>
+                <td><span class="place-name-en">Mumbai, MH</span></td>
+                <td>6.0 m</td>
+                <td>94% Concrete</td>
+                <td>Low bowl shape land + high sea tide</td>
+                <td><span class="risk-pill risk-CRITICAL">DANGER</span></td>
+                <td>Open underground storage tanks &amp; pumps</td>
+              </tr>
+              <tr>
+                <td><strong class="place-name-en">Velachery Main Lake Road</strong></td>
+                <td><span class="place-name-en">Chennai, TN</span></td>
+                <td>8.5 m</td>
+                <td>79% Concrete</td>
+                <td>Drain pipes clogged with mud &amp; silt</td>
+                <td><span class="risk-pill risk-HIGH">HIGH</span></td>
+                <td>Clean garbage from drainage channels</td>
+              </tr>
+              <tr>
+                <td><strong class="place-name-en">Bellandur Canal Outflow</strong></td>
+                <td><span class="place-name-en">Bengaluru, KA</span></td>
+                <td>870.0 m</td>
+                <td>74% Concrete</td>
+                <td>Weeds &amp; garbage blocking gate</td>
+                <td><span class="risk-pill risk-MODERATE">MEDIUM</span></td>
+                <td>Clear weeds before monsoon storm hits</td>
+              </tr>
+              <tr>
+                <td><strong class="place-name-en">Thanthania Market Road</strong></td>
+                <td><span class="place-name-en">Kolkata, WB</span></td>
+                <td>7.0 m</td>
+                <td>91% Concrete</td>
+                <td>Old drain pipes with very slow drainage</td>
+                <td><span class="risk-pill risk-HIGH">HIGH</span></td>
+                <td>Keep heavy suction trucks running</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div class="footer-left">
+      <span class="footer-tag"><i class="fa-solid fa-satellite-dish"></i> <span data-i18n="liveSystemLabel">Live System:</span></span>
+      <span id="footer-audit-stream">Connected. Checking live satellite weather and ground elevation.</span>
+    </div>
+    <div class="footer-right">
+      <span>FloodGuard AI &bull; Open-Meteo &bull; Leaflet OSM</span>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
